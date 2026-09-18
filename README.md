@@ -3,26 +3,37 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Netlify Status](https://img.shields.io/badge/Netlify-Live_Demo-00C7B7?logo=netlify&logoColor=white)](https://skill-auditor-agent.netlify.app)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-19%20passed%20%7C%20100%25-brightgreen.svg)](tests/)
+[![ESLint](https://img.shields.io/badge/ESLint-0%20errors-blueviolet.svg)](web/)
+[![Next.js](https://img.shields.io/badge/Next.js-16%20Turbopack-black.svg?logo=next.js)](web/)
 
 > 🌐 **Live Interactive Showcase & Web Playground**: **[https://skill-auditor-agent.netlify.app](https://skill-auditor-agent.netlify.app)**
 
-A powerful repository documentation and audit tool for AI agent skills, configurations, and technical documentation. Point it at any directory or repository, and it automatically indexes and transforms every skill/config YAML file and Markdown document into a unified, publication-ready `SKILLS_OVERVIEW.md`.
+A powerful repository documentation and audit tool for AI agent skills, configurations, and technical documentation. Point it at any local folder or remote Git/GitHub repository, and it automatically indexes, explains, and transforms every skill/config YAML file and Markdown document into a unified, publication-ready `SKILLS_OVERVIEW.md` and standalone `.md` specifications.
 
 Includes:
-- A global architecture matrix (file path, file extension, and scope).
-- Automated parameter tables for `inputs` and `outputs` with types and required indicators.
-- Tool listings and syntax-fenced prompt inspection.
-- "Log, don't guess" unmapped schema protection.
+- **Remote Git Auto-Cloning**: Pass a remote repo URL and it automatically clones into `./<repo_name>` when no directory is specified.
+- **YAML to Markdown Converter**: Convert YAML/YML definitions into standalone `.md` specifications with one click or `-c` / `--convert-all`.
+- **Repository Architecture Explainer**: Synthesizes an executive overview detailing repository mission, skill rosters, tool integrations, and execution flow.
+- **Global Architecture Matrix**: Tabulates file paths, extensions, and operational scopes.
+- **Automated Parameter Tables**: Clean tables for `inputs` and `outputs` with types and bolded required flags.
+- **Syntax-Fenced Prompts & Tool Badges**: Formatted system prompts and comma-separated inline tool pills.
+- **"Log, Don't Guess" Safety**: Unmapped schema keys are safely recorded with their raw Python types without hallucination.
 
 ---
 
 ## Interactive Web Showcase (Next.js + Netlify)
 
 Explore and test the auditor live in your browser at **[skill-auditor-agent.netlify.app](https://skill-auditor-agent.netlify.app)**:
-- **Interactive In-Browser Playground**: Select preset agent skills or paste your own YAML/Markdown to see real-time synthesized Markdown and visual previews.
-- **Dark Mode / Light Mode**: Sleek dark aesthetic with instant theme toggle.
-- **Detailed Skill Architecture**: Side-by-side comparison of deterministic vs agentic execution, schema specifications, and copyable CLI commands.
+- **Remote Git Auto-Clone Playground**: Input any Git repository URL to simulate cloning to `./<repo_name>` and auditing with instant feedback.
+- **Multi-Tab Preview Engine**:
+  - `Visual Preview`: Formatted global matrix, inputs/outputs tables, and prompt blocks.
+  - `Raw Overview`: Syntax-highlighted monolithic `SKILLS_OVERVIEW.md` index.
+  - `Converted .md Spec`: Clean standalone Markdown specification generated from YAML.
+  - `Architecture Explainer`: Executive summary of repository role, skill capabilities, tool integrations, and operational flow.
+- **One-Click Downloads**: Download `SKILLS_OVERVIEW.md` or individual converted `${skill}.md` specs directly.
+- **Dark / Light Mode**: Sleek developer aesthetic with theme toggle.
+- **Detailed Architectural Specs**: Side-by-side comparison of deterministic Python execution vs autonomous LLM agent execution.
 
 ---
 
@@ -164,12 +175,52 @@ skill-auditor-agent/
 
 ---
 
-## Running Tests
+## Testing & Quality Gates
 
-Run the test suite using Python's built-in `unittest`:
+The codebase enforces a 100% test pass rate across both the Python runtime and the Next.js frontend.
+
+### 1. Python Automated Test Suite (19/19 Passing)
+Run the unit test suite covering remote repo detection, cloning resolution, YAML-to-MD conversion, repository explainer generation, frontmatter stripping, table rendering, and unmapped key safety:
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+Expected Output:
+```text
+test_build_matrix (test_auditor.TestAuditor) ... ok
+test_convert_yaml_files_to_md_and_extract_convert_all (test_auditor.TestAuditor) ... ok
+test_convert_yaml_to_md (test_auditor.TestAuditor) ... ok
+test_end_to_end_extract_and_run (test_auditor.TestAuditor) ... ok
+test_generate_repo_explanation (test_auditor.TestAuditor) ... ok
+test_is_remote_repo_url (test_auditor.TestAuditor) ... ok
+test_iter_target_files_exclusion (test_auditor.TestAuditor) ... ok
+test_read_text_safely (test_auditor.TestAuditor) ... ok
+test_render_io_table_dict (test_auditor.TestAuditor) ... ok
+test_render_io_table_empty (test_auditor.TestAuditor) ... ok
+test_render_io_table_invalid (test_auditor.TestAuditor) ... ok
+test_render_io_table_list (test_auditor.TestAuditor) ... ok
+test_render_md_doc (test_auditor.TestAuditor) ... ok
+test_render_md_doc_empty (test_auditor.TestAuditor) ... ok
+test_render_md_doc_with_frontmatter (test_auditor.TestAuditor) ... ok
+test_render_yaml_doc (test_auditor.TestAuditor) ... ok
+test_render_yaml_doc_prompt_variations (test_auditor.TestAuditor) ... ok
+test_render_yaml_doc_tools_variations (test_auditor.TestAuditor) ... ok
+test_resolve_target_dir_local (test_auditor.TestAuditor) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.031s
+
+OK
+```
+
+### 2. Frontend Linting & Build Verification
+Verify the web application compiles without warnings or errors:
+
+```bash
+cd web
+npm run lint    # ESLint 9 (0 errors, 0 warnings)
+npm run build   # Next.js 16 Turbopack static compilation
 ```
 
 ---
