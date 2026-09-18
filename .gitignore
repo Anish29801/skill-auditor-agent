@@ -58,3 +58,15 @@ coverage.xml
 
 # Local audit output test files
 SKILLS_OVERVIEW.md
+
+# Netlify
+.netlify/
+
+# Node & Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*

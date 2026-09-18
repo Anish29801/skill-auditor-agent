@@ -2,7 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Netlify Status](https://img.shields.io/badge/Netlify-Live_Demo-00C7B7?logo=netlify&logoColor=white)](https://skill-auditor-agent.netlify.app)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
+
+> 🌐 **Live Interactive Showcase & Web Playground**: **[https://skill-auditor-agent.netlify.app](https://skill-auditor-agent.netlify.app)**
 
 A powerful repository documentation and audit tool for AI agent skills, configurations, and technical documentation. Point it at any directory or repository, and it automatically indexes and transforms every skill/config YAML file and Markdown document into a unified, publication-ready `SKILLS_OVERVIEW.md`.
 
@@ -11,6 +14,15 @@ Includes:
 - Automated parameter tables for `inputs` and `outputs` with types and required indicators.
 - Tool listings and syntax-fenced prompt inspection.
 - "Log, don't guess" unmapped schema protection.
+
+---
+
+## Interactive Web Showcase (Next.js + Netlify)
+
+Explore and test the auditor live in your browser at **[skill-auditor-agent.netlify.app](https://skill-auditor-agent.netlify.app)**:
+- **Interactive In-Browser Playground**: Select preset agent skills or paste your own YAML/Markdown to see real-time synthesized Markdown and visual previews.
+- **Dark Mode / Light Mode**: Sleek dark aesthetic with instant theme toggle.
+- **Detailed Skill Architecture**: Side-by-side comparison of deterministic vs agentic execution, schema specifications, and copyable CLI commands.
 
 ---
 
@@ -120,8 +132,13 @@ skill-auditor-agent/
 ├── universal-repo-auditor.md   # Agent skill definition (YAML frontmatter + Prompt)
 ├── pyproject.toml              # Package configuration and CLI entrypoint
 ├── requirements.txt            # Python dependencies (pyyaml)
+├── netlify.toml                # Netlify deployment configuration
 ├── LICENSE                     # MIT License
 ├── README.md                   # Documentation and usage guide
+├── web/                        # Next.js interactive frontend showcase
+│   ├── src/app/                # App router and UI components
+│   ├── public/                 # Static assets
+│   └── package.json            # Web dependencies
 ├── examples/                   # Sample skills and configs for testing
 │   └── sample_skills/
 │       ├── summarizer.yaml
