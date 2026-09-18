@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import * as yaml from "js-yaml";
 import {
   Terminal,
@@ -20,6 +20,51 @@ import {
   AlertTriangle,
   Zap,
 } from "lucide-react";
+
+interface SkillField {
+  name?: string;
+  type?: string;
+  required?: boolean;
+  description?: string;
+}
+
+interface ParsedSkillDoc {
+  type: "skill";
+  id?: string;
+  name?: string;
+  description?: string;
+  inputs?: SkillField[] | Record<string, SkillField>;
+  outputs?: SkillField[] | Record<string, SkillField>;
+  tools?: string[] | string;
+  prompt?: string;
+  unmapped?: Array<{ key: string; rawType: string }>;
+}
+
+interface MarkdownDoc {
+  type: "markdown";
+  raw: string;
+}
+
+interface ErrorDoc {
+  type: "error";
+  error: string;
+}
+
+type AuditOutputData = ParsedSkillDoc | MarkdownDoc | ErrorDoc | null;
+
+function normalizeTableRows(rows: SkillField[] | Record<string, SkillField> | unknown): SkillField[] {
+  if (!rows) return [];
+  if (Array.isArray(rows)) {
+    return rows.filter((r): r is SkillField => typeof r === "object" && r !== null);
+  }
+  if (typeof rows === "object") {
+    return Object.entries(rows as Record<string, unknown>).map(([name, spec]) => ({
+      name,
+      ...(typeof spec === "object" && spec !== null ? (spec as Partial<SkillField>) : {}),
+    }));
+  }
+  return [];
+}
 
 // Crisp inline GitHub SVG Icon
 function GithubIcon({ className = "w-5 h-5" }: { className?: string }) {
@@ -115,11 +160,8 @@ export default function AuditorShowcase() {
   const [activeSampleKey, setActiveSampleKey] = useState<keyof typeof SAMPLES>("summarizer");
   const [inputCode, setInputCode] = useState(SAMPLES.summarizer.content);
   const [inputFilename, setInputFilename] = useState(SAMPLES.summarizer.filename);
-  const [outputMarkdown, setOutputMarkdown] = useState("");
-  const [outputJson, setOutputJson] = useState<any>(null);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [previewTab, setPreviewTab] = useState<"rendered" | "raw">("rendered");
-  const [isAuditing, setIsAuditing] = useState(false);
 
   // Toggle Theme
   useEffect(() => {
@@ -133,19 +175,22 @@ export default function AuditorShowcase() {
     }
   }, [theme]);
 
-  // Execute in-browser audit
-  const runAudit = (content: string, filename: string) => {
-    setIsAuditing(true);
+  // Derived in-browser audit result via useMemo (avoids cascading setState in effect)
+  const { outputMarkdown, outputJson } = useMemo<{
+    outputMarkdown: string;
+    outputJson: AuditOutputData;
+  }>(() => {
     try {
-      const isYaml = filename.endsWith(".yml") || filename.endsWith(".yaml");
+      const isYaml = inputFilename.endsWith(".yml") || inputFilename.endsWith(".yaml");
       let matrixScope = "Documentation guidelines";
       const bodyLines: string[] = [];
 
       if (isYaml) {
-        let parsed: any = {};
+        let parsed: unknown;
         try {
-          parsed = yaml.load(content);
-        } catch (e: any) {
+          parsed = yaml.load(inputCode);
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
           matrixScope = "Malformed configuration — skipped";
           const lines = [
             `# SKILLS_OVERVIEW`,
@@ -154,14 +199,14 @@ export default function AuditorShowcase() {
             ``,
             `| File Path | Extension | Scope |`,
             `| :--- | :--- | :--- |`,
-            `| \`${filename}\` | \`${filename.substring(filename.lastIndexOf("."))}\` | ${matrixScope} |`,
+            `| \`${inputFilename}\` | \`${inputFilename.substring(inputFilename.lastIndexOf("."))}\` | ${matrixScope} |`,
             ``,
-            `> Warning: Malformed YAML in \`${filename}\`: ${e.message}`,
+            `> Warning: Malformed YAML in \`${inputFilename}\`: ${errMsg}`,
           ];
-          setOutputMarkdown(lines.join("\n"));
-          setOutputJson({ error: e.message });
-          setIsAuditing(false);
-          return;
+          return {
+            outputMarkdown: lines.join("\n"),
+            outputJson: { type: "error", error: errMsg },
+          };
         }
 
         if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -173,37 +218,29 @@ export default function AuditorShowcase() {
             ``,
             `| File Path | Extension | Scope |`,
             `| :--- | :--- | :--- |`,
-            `| \`${filename}\` | \`.yaml\` | ${matrixScope} |`,
+            `| \`${inputFilename}\` | \`.yaml\` | ${matrixScope} |`,
           ];
-          setOutputMarkdown(lines.join("\n"));
-          setOutputJson({ error: "Non-mapping root" });
-          setIsAuditing(false);
-          return;
+          return {
+            outputMarkdown: lines.join("\n"),
+            outputJson: { type: "error", error: "Non-mapping root" },
+          };
         }
 
+        const parsedRecord = parsed as Record<string, unknown>;
         matrixScope = "Structured configuration schema";
-        setOutputJson(parsed);
 
-        bodyLines.push(`## \`${filename}\`\n`);
-        if (parsed.id) bodyLines.push(`- **Id**: ${parsed.id}`);
-        if (parsed.name) bodyLines.push(`- **Name**: ${parsed.name}`);
-        if (parsed.description) bodyLines.push(`- **Description**: ${parsed.description}`);
+        bodyLines.push(`## \`${inputFilename}\`\n`);
+        if (typeof parsedRecord.id === "string") bodyLines.push(`- **Id**: ${parsedRecord.id}`);
+        if (typeof parsedRecord.name === "string") bodyLines.push(`- **Name**: ${parsedRecord.name}`);
+        if (typeof parsedRecord.description === "string") bodyLines.push(`- **Description**: ${parsedRecord.description}`);
         bodyLines.push(``);
 
-        // Inputs Table
-        const renderTable = (rows: any, heading: string) => {
+        // Inputs & Outputs Table helper
+        const renderTable = (rows: unknown, heading: string): string[] => {
           if (!rows) return [];
           const lines: string[] = [];
-          let normalized: any[] = [];
-
-          if (Array.isArray(rows)) {
-            normalized = rows.filter((r) => typeof r === "object" && r !== null);
-          } else if (typeof rows === "object") {
-            normalized = Object.entries(rows).map(([name, spec]: [string, any]) => ({
-              name,
-              ...(typeof spec === "object" ? spec : {}),
-            }));
-          } else {
+          const normalized = normalizeTableRows(rows);
+          if (normalized.length === 0) {
             return [
               `> Unmapped \`${heading.toLowerCase()}\` schema — raw type \`${typeof rows}\`, left unparsed.\n`,
             ];
@@ -223,60 +260,109 @@ export default function AuditorShowcase() {
           return lines;
         };
 
-        if (parsed.inputs) bodyLines.push(...renderTable(parsed.inputs, "Inputs"));
-        if (parsed.outputs) bodyLines.push(...renderTable(parsed.outputs, "Outputs"));
+        if (parsedRecord.inputs) bodyLines.push(...renderTable(parsedRecord.inputs, "Inputs"));
+        if (parsedRecord.outputs) bodyLines.push(...renderTable(parsedRecord.outputs, "Outputs"));
 
-        if (parsed.tools) {
-          const tools = Array.isArray(parsed.tools) ? parsed.tools : [parsed.tools];
-          bodyLines.push(`**Tools:** ` + tools.map((t: string) => `\`${t}\``).join(", ") + `\n`);
+        if (parsedRecord.tools) {
+          const tools = Array.isArray(parsedRecord.tools) ? parsedRecord.tools : [parsedRecord.tools];
+          const toolList = tools.filter((t): t is string => typeof t === "string" && Boolean(t.trim()));
+          if (toolList.length > 0) {
+            bodyLines.push(`**Tools:** ` + toolList.map((t) => `\`${t}\``).join(", ") + `\n`);
+          }
         }
 
-        if (typeof parsed.prompt === "string") {
+        if (typeof parsedRecord.prompt === "string" && parsedRecord.prompt.trim()) {
           bodyLines.push(`**Prompt:**\n`);
           bodyLines.push(`\`\`\`text`);
-          bodyLines.push(parsed.prompt.trim());
+          bodyLines.push(parsedRecord.prompt.trim());
           bodyLines.push(`\`\`\`\n`);
         }
 
+        const unmapped: Array<{ key: string; rawType: string }> = [];
         const known = new Set(["id", "name", "description", "inputs", "outputs", "tools", "prompt"]);
-        Object.keys(parsed).forEach((key) => {
+        Object.keys(parsedRecord).forEach((key) => {
           if (!known.has(key)) {
+            const rawType = typeof parsedRecord[key];
+            unmapped.push({ key, rawType });
             bodyLines.push(
-              `> Unmapped field \`${key}\` — raw type \`${typeof parsed[key]}\`, logged without interpretation.`
+              `> Unmapped field \`${key}\` — raw type \`${rawType}\`, logged without interpretation.`
             );
           }
         });
+
+        const skillData: ParsedSkillDoc = {
+          type: "skill",
+          id: typeof parsedRecord.id === "string" ? parsedRecord.id : undefined,
+          name: typeof parsedRecord.name === "string" ? parsedRecord.name : undefined,
+          description: typeof parsedRecord.description === "string" ? parsedRecord.description : undefined,
+          inputs: parsedRecord.inputs as SkillField[] | Record<string, SkillField> | undefined,
+          outputs: parsedRecord.outputs as SkillField[] | Record<string, SkillField> | undefined,
+          tools: parsedRecord.tools as string[] | string | undefined,
+          prompt: typeof parsedRecord.prompt === "string" ? parsedRecord.prompt : undefined,
+          unmapped,
+        };
+
+        const fullOutput = [
+          `# SKILLS_OVERVIEW`,
+          ``,
+          `## Global Architecture Matrix`,
+          ``,
+          `| File Path | Extension | Scope |`,
+          `| :--- | :--- | :--- |`,
+          `| \`${inputFilename}\` | \`${inputFilename.substring(inputFilename.lastIndexOf("."))}\` | ${matrixScope} |`,
+          ``,
+          ...bodyLines,
+        ].join("\n");
+
+        return {
+          outputMarkdown: fullOutput,
+          outputJson: skillData,
+        };
       } else {
         // Markdown file
-        setOutputJson({ type: "markdown", raw: content });
-        const firstLine = content.split("\n").map((l) => l.trim()).find((l) => l.length > 0) || "(empty)";
-        bodyLines.push(`## \`${filename}\`\n`);
+        const lines = inputCode.split(/\r?\n/);
+        let previewLines = lines;
+        if (previewLines.length > 0 && previewLines[0].trim() === "---") {
+          let closingIdx = -1;
+          for (let i = 1; i < previewLines.length; i++) {
+            if (previewLines[i].trim() === "---") {
+              closingIdx = i;
+              break;
+            }
+          }
+          if (closingIdx !== -1 && closingIdx + 1 < previewLines.length) {
+            previewLines = previewLines.slice(closingIdx + 1);
+          }
+        }
+        const firstLine = previewLines.map((l) => l.trim()).find((l) => l.length > 0) || "(empty)";
+        bodyLines.push(`## \`${inputFilename}\`\n`);
         bodyLines.push(`- **Type**: Documentation guidelines`);
         bodyLines.push(`- **Preview**: ${firstLine.slice(0, 120)}\n`);
+
+        const fullOutput = [
+          `# SKILLS_OVERVIEW`,
+          ``,
+          `## Global Architecture Matrix`,
+          ``,
+          `| File Path | Extension | Scope |`,
+          `| :--- | :--- | :--- |`,
+          `| \`${inputFilename}\` | \`${inputFilename.substring(inputFilename.lastIndexOf("."))}\` | ${matrixScope} |`,
+          ``,
+          ...bodyLines,
+        ].join("\n");
+
+        return {
+          outputMarkdown: fullOutput,
+          outputJson: { type: "markdown", raw: inputCode },
+        };
       }
-
-      const fullOutput = [
-        `# SKILLS_OVERVIEW`,
-        ``,
-        `## Global Architecture Matrix`,
-        ``,
-        `| File Path | Extension | Scope |`,
-        `| :--- | :--- | :--- |`,
-        `| \`${filename}\` | \`${filename.substring(filename.lastIndexOf("."))}\` | ${matrixScope} |`,
-        ``,
-        ...bodyLines,
-      ].join("\n");
-
-      setOutputMarkdown(fullOutput);
-    } catch (err: any) {
-      setOutputMarkdown(`Error running audit: ${err.message}`);
-    } finally {
-      setIsAuditing(false);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      return {
+        outputMarkdown: `Error running audit: ${errMsg}`,
+        outputJson: { type: "error", error: errMsg },
+      };
     }
-  };
-
-  useEffect(() => {
-    runAudit(inputCode, inputFilename);
   }, [inputCode, inputFilename]);
 
   const handleSelectSample = (key: keyof typeof SAMPLES) => {
@@ -299,6 +385,10 @@ export default function AuditorShowcase() {
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+  };
+
+  const downloadMarkdown = () => {
+    downloadFile("SKILLS_OVERVIEW.md", outputMarkdown);
   };
 
   return (
@@ -499,7 +589,7 @@ export default function AuditorShowcase() {
             <div className="px-4 py-2.5 bg-slate-950/40 border-t border-slate-800/60 text-xs text-slate-400 flex items-center justify-between light:bg-slate-50 light:border-slate-200">
               <span>{inputCode.split("\n").length} lines</span>
               <span className="text-cyan-400 flex items-center gap-1 font-mono">
-                {isAuditing ? "Processing..." : "✓ Ready"}
+                ✓ Ready
               </span>
             </div>
           </div>
@@ -532,11 +622,11 @@ export default function AuditorShowcase() {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => copyToClipboard(outputMarkdown, "output")}
+                  onClick={() => copyToClipboard(outputMarkdown, "preview")}
                   className="p-1.5 rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-900 text-slate-300 hover:text-cyan-300 text-xs flex items-center gap-1 light:bg-white light:border-slate-300 light:text-slate-700"
                   title="Copy generated markdown"
                 >
-                  {copiedSection === "output" ? (
+                  {copiedSection === "preview" ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-emerald-400">Copied</span>
@@ -548,9 +638,8 @@ export default function AuditorShowcase() {
                     </>
                   )}
                 </button>
-
                 <button
-                  onClick={() => downloadFile("SKILLS_OVERVIEW.md", outputMarkdown)}
+                  onClick={downloadMarkdown}
                   className="p-1.5 rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-900 text-slate-300 hover:text-cyan-300 text-xs flex items-center gap-1 light:bg-white light:border-slate-300 light:text-slate-700"
                   title="Download SKILLS_OVERVIEW.md"
                 >
@@ -585,7 +674,7 @@ export default function AuditorShowcase() {
                           <td className="py-1.5 text-cyan-300 font-semibold">{inputFilename}</td>
                           <td className="py-1.5 text-slate-400">{inputFilename.substring(inputFilename.lastIndexOf("."))}</td>
                           <td className="py-1.5 text-emerald-400">
-                            {outputJson?.error
+                            {outputJson?.type === "error"
                               ? "Malformed configuration"
                               : outputJson?.type === "markdown"
                               ? "Documentation guidelines"
@@ -597,7 +686,7 @@ export default function AuditorShowcase() {
                   </div>
 
                   {/* Rendered Skill Breakdown */}
-                  {outputJson && outputJson.type !== "markdown" && !outputJson.error && (
+                  {outputJson?.type === "skill" && (
                     <div className="space-y-3">
                       <div className="p-3.5 rounded-lg border border-slate-800/80 bg-slate-950/40 light:bg-slate-50 light:border-slate-200">
                         <div className="text-base font-bold text-slate-100 light:text-slate-900 font-mono">
@@ -639,10 +728,7 @@ export default function AuditorShowcase() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {(Array.isArray(outputJson.inputs)
-                                  ? outputJson.inputs
-                                  : Object.entries(outputJson.inputs).map(([k, v]: any) => ({ name: k, ...v }))
-                                ).map((inp: any, idx: number) => (
+                                {normalizeTableRows(outputJson.inputs).map((inp, idx) => (
                                   <tr key={idx} className="border-b border-slate-800/50 light:border-slate-100">
                                     <td className="p-2 font-mono text-cyan-300">{inp.name || "—"}</td>
                                     <td className="p-2 font-mono text-indigo-300">{inp.type || "—"}</td>
@@ -664,8 +750,47 @@ export default function AuditorShowcase() {
                         </div>
                       )}
 
+                      {/* Outputs Table */}
+                      {outputJson.outputs && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                            Outputs Table
+                          </div>
+                          <div className="rounded border border-slate-800 bg-slate-950/40 overflow-hidden light:bg-white light:border-slate-200">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-slate-900/80 border-b border-slate-800 light:bg-slate-100 light:border-slate-200 text-slate-400">
+                                <tr>
+                                  <th className="p-2">Name</th>
+                                  <th className="p-2">Type</th>
+                                  <th className="p-2">Required</th>
+                                  <th className="p-2">Description</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {normalizeTableRows(outputJson.outputs).map((out, idx) => (
+                                  <tr key={idx} className="border-b border-slate-800/50 light:border-slate-100">
+                                    <td className="p-2 font-mono text-cyan-300">{out.name || "—"}</td>
+                                    <td className="p-2 font-mono text-indigo-300">{out.type || "—"}</td>
+                                    <td className="p-2">
+                                      {out.required ? (
+                                        <span className="px-1.5 py-0.5 rounded bg-rose-950/60 text-rose-300 font-semibold text-[10px] border border-rose-800/40">
+                                          YES
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-500 text-[10px]">No</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 text-slate-400">{out.description || "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Prompt block */}
-                      {outputJson.prompt && (
+                      {typeof outputJson.prompt === "string" && outputJson.prompt.trim() && (
                         <div>
                           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                             Fenced System Prompt
@@ -683,8 +808,19 @@ export default function AuditorShowcase() {
                     <div className="p-3.5 rounded-lg border border-slate-800/80 bg-slate-950/40 light:bg-slate-50 light:border-slate-200">
                       <div className="text-xs uppercase font-mono text-slate-500 mb-1">Documentation Preview</div>
                       <div className="font-mono text-xs text-slate-300 light:text-slate-800">
-                        {outputJson.raw.split("\n")[0] || "(empty)"}
+                        {outputJson.raw.split(/\r?\n/).find((l: string) => l.trim().length > 0) || "(empty)"}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Error Preview */}
+                  {outputJson?.type === "error" && (
+                    <div className="p-3.5 rounded-lg border border-rose-800/50 bg-rose-950/20 text-rose-300 text-xs font-mono">
+                      <div className="font-semibold mb-1 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                        Audit Diagnostic
+                      </div>
+                      <div>{outputJson.error}</div>
                     </div>
                   )}
                 </div>

@@ -15,7 +15,8 @@ log = logging.getLogger("repo-auditor")
 
 EXCLUDED_DIRS = {
     ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv",
-    "dist", "build", ".next", ".turbo", ".cache", "coverage",
+    "dist", "build", ".next", ".turbo", ".cache", "coverage", "out",
+    ".netlify", ".pytest_cache", ".ruff_cache", ".mypy_cache",
 }
 OUTPUT_FILENAME = "SKILLS_OVERVIEW.md"
 
@@ -82,11 +83,13 @@ def render_yaml_doc(rel_path: str, data: dict[str, Any]) -> list[str]:
 
     if "tools" in data:
         tools = data["tools"]
-        tool_list = tools if isinstance(tools, list) else [tools]
-        lines.append("**Tools:** " + ", ".join(f"`{t}`" for t in tool_list) + "\n")
+        tool_list = [t for t in (tools if isinstance(tools, list) else [tools]) if t]
+        if tool_list:
+            lines.append("**Tools:** " + ", ".join(f"`{t}`" for t in tool_list) + "\n")
 
-    if isinstance(data.get("prompt"), str):
-        lines += ["**Prompt:**\n", "```text", data["prompt"].strip(), "```\n"]
+    prompt = data.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        lines += ["**Prompt:**\n", "```text", prompt.strip(), "```\n"]
 
     known_keys = {"id", "name", "description", "inputs", "outputs", "tools", "prompt"}
     for key, value in data.items():
@@ -97,7 +100,18 @@ def render_yaml_doc(rel_path: str, data: dict[str, Any]) -> list[str]:
 
 
 def render_md_doc(rel_path: str, content: str) -> list[str]:
-    first_line = next((l.strip() for l in content.splitlines() if l.strip()), "(empty)")
+    lines = content.splitlines()
+    # If the markdown file begins with YAML frontmatter (--- ... ---), skip past it
+    if lines and lines[0].strip() == "---":
+        closing_idx = None
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                closing_idx = i
+                break
+        if closing_idx is not None and closing_idx + 1 < len(lines):
+            lines = lines[closing_idx + 1:]
+
+    first_line = next((l.strip() for l in lines if l.strip()), "(empty)")
     return [
         f"## `{rel_path}`\n",
         "- **Type**: Documentation guidelines",
@@ -117,6 +131,7 @@ def build_matrix(entries: list[tuple[str, str, str]]) -> list[str]:
 def extract_and_run(root_dir: str | Path, output_dir: str | Path | None = None) -> Path:
     root = Path(root_dir).resolve()
     out_path = (Path(output_dir).resolve() if output_dir else root) / OUTPUT_FILENAME
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     matrix_entries: list[tuple[str, str, str]] = []
     body: list[str] = []
