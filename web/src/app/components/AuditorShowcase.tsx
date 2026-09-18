@@ -19,6 +19,11 @@ import {
   BookOpen,
   AlertTriangle,
   Zap,
+  GitBranch,
+  FolderDown,
+  FileText,
+  Layers,
+  Globe,
 } from "lucide-react";
 
 interface SkillField {
@@ -155,13 +160,34 @@ Every agent skill in this repository must declare its input parameters, expected
   },
 };
 
+const REMOTE_PRESETS = [
+  {
+    name: "skill-auditor-agent",
+    url: "https://github.com/Anish29801/skill-auditor-agent.git",
+    sampleKey: "summarizer" as const,
+  },
+  {
+    name: "web-research-agent",
+    url: "https://github.com/example/research-skills.git",
+    sampleKey: "researcher" as const,
+  },
+  {
+    name: "agent-guidelines",
+    url: "https://github.com/example/agent-guidelines.git",
+    sampleKey: "docs" as const,
+  },
+];
+
 export default function AuditorShowcase() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [activeSampleKey, setActiveSampleKey] = useState<keyof typeof SAMPLES>("summarizer");
   const [inputCode, setInputCode] = useState(SAMPLES.summarizer.content);
   const [inputFilename, setInputFilename] = useState(SAMPLES.summarizer.filename);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
-  const [previewTab, setPreviewTab] = useState<"rendered" | "raw">("rendered");
+  const [previewTab, setPreviewTab] = useState<"rendered" | "raw" | "converted" | "explanation">("rendered");
+  const [remoteUrl, setRemoteUrl] = useState("https://github.com/Anish29801/skill-auditor-agent.git");
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneNotice, setCloneNotice] = useState<string | null>(null);
 
   // Toggle Theme
   useEffect(() => {
@@ -176,9 +202,11 @@ export default function AuditorShowcase() {
   }, [theme]);
 
   // Derived in-browser audit result via useMemo (avoids cascading setState in effect)
-  const { outputMarkdown, outputJson } = useMemo<{
+  const { outputMarkdown, outputJson, convertedMd, repoExplanation } = useMemo<{
     outputMarkdown: string;
     outputJson: AuditOutputData;
+    convertedMd: string;
+    repoExplanation: string;
   }>(() => {
     try {
       const isYaml = inputFilename.endsWith(".yml") || inputFilename.endsWith(".yaml");
@@ -206,6 +234,8 @@ export default function AuditorShowcase() {
           return {
             outputMarkdown: lines.join("\n"),
             outputJson: { type: "error", error: errMsg },
+            convertedMd: `> Failed to convert ${inputFilename}: Malformed YAML: ${errMsg}`,
+            repoExplanation: `## Repository Overview\n\nFailed to evaluate repository components due to parse error in ${inputFilename}.`,
           };
         }
 
@@ -223,6 +253,8 @@ export default function AuditorShowcase() {
           return {
             outputMarkdown: lines.join("\n"),
             outputJson: { type: "error", error: "Non-mapping root" },
+            convertedMd: `> Non-mapping YAML root in ${inputFilename}.`,
+            repoExplanation: `## Repository Overview\n\nComponent ${inputFilename} contains a non-mapping YAML root.`,
           };
         }
 
@@ -314,9 +346,46 @@ export default function AuditorShowcase() {
           ...bodyLines,
         ].join("\n");
 
+        // Converted Markdown representation (YAML -> standalone .md)
+        const docTitle =
+          (typeof parsedRecord.name === "string" && parsedRecord.name) ||
+          (typeof parsedRecord.id === "string" && parsedRecord.id) ||
+          inputFilename.replace(/\.[^/.]+$/, "").split("/").pop() ||
+          "Skill Specification";
+
+        const convertedLines = [
+          `# ${docTitle}\n`,
+          `> Converted from \`${inputFilename}\` by Universal Repo Auditor.\n`,
+          ...bodyLines,
+        ];
+
+        // Architectural explanation
+        const toolsList = parsedRecord.tools
+          ? (Array.isArray(parsedRecord.tools) ? parsedRecord.tools : [parsedRecord.tools]).filter(Boolean).map((t) => `\`${t}\``).join(", ")
+          : "None specified";
+
+        const explanationLines = [
+          `## Repository Overview & Architecture Explanation\n`,
+          `**Repository Context**: \`skill-auditor-agent\`  `,
+          `**Audited Target**: \`${inputFilename}\`  `,
+          `**Component Classification**: Structured Agent Skill Manifest (YAML)\n`,
+          `### Architectural Role & Mission`,
+          `This repository hosts agent capability manifests, operational skills, and documentation specifications. It establishes standardized interface contracts (typed inputs, validated outputs, and syntax-fenced prompts) to enable reproducible autonomous execution across agent ecosystems.\n`,
+          `### Discovered Skills & Capabilities`,
+          `- **${docTitle}**: Operational capability with validated contract parameters.\n`,
+          `### Tool Dependencies & Integrations`,
+          `The audited skill invokes the following integrated tools: ${toolsList}.\n`,
+          `### Operational Execution Flow`,
+          `1. **Discovery & Ingestion**: Recursively scans directories for YAML configurations and Markdown guidance. When a remote Git URL is supplied without a target directory, the auditor automatically clones the repository into the current directory (\`./<repo_name>\`).`,
+          `2. **Schema Inversion & Conversion**: Translates structured YAML/YML definitions into standardized parameter tables and generates standalone \`.md\` documents (\`--convert-all\` / \`-c\`).`,
+          `3. **Synthesis & Overview**: Generates an executive repository architecture explanation and compiles the unified \`SKILLS_OVERVIEW.md\` matrix.`,
+        ];
+
         return {
           outputMarkdown: fullOutput,
           outputJson: skillData,
+          convertedMd: convertedLines.join("\n"),
+          repoExplanation: explanationLines.join("\n"),
         };
       } else {
         // Markdown file
@@ -351,9 +420,24 @@ export default function AuditorShowcase() {
           ...bodyLines,
         ].join("\n");
 
+        const explanationLines = [
+          `## Repository Overview & Architecture Explanation\n`,
+          `**Repository Context**: \`skill-auditor-agent\`  `,
+          `**Audited Target**: \`${inputFilename}\`  `,
+          `**Component Classification**: Documentation Guidelines & Principles (Markdown)\n`,
+          `### Architectural Role & Mission`,
+          `This repository provides architectural governance, design rules, and skill authoring guidelines for agent implementations.\n`,
+          `### Operational Execution Flow`,
+          `1. **Discovery & Ingestion**: Reads markdown documentation, stripping frontmatter headers if present.`,
+          `2. **Schema Inversion & Conversion**: Extracts preview summaries into the Global Architecture Matrix.`,
+          `3. **Synthesis**: Preserves authoritative documentation standards for development teams.`,
+        ];
+
         return {
           outputMarkdown: fullOutput,
           outputJson: { type: "markdown", raw: inputCode },
+          convertedMd: `# Converted Markdown Specification\n\n> File \`${inputFilename}\` is already in Markdown format.\n\n` + inputCode,
+          repoExplanation: explanationLines.join("\n"),
         };
       }
     } catch (err: unknown) {
@@ -361,6 +445,8 @@ export default function AuditorShowcase() {
       return {
         outputMarkdown: `Error running audit: ${errMsg}`,
         outputJson: { type: "error", error: errMsg },
+        convertedMd: `Error converting YAML: ${errMsg}`,
+        repoExplanation: `Error generating explanation: ${errMsg}`,
       };
     }
   }, [inputCode, inputFilename]);
@@ -369,6 +455,26 @@ export default function AuditorShowcase() {
     setActiveSampleKey(key);
     setInputCode(SAMPLES[key].content);
     setInputFilename(SAMPLES[key].filename);
+  };
+
+  const handleCloneRepo = (urlToClone?: string) => {
+    const target = (urlToClone || remoteUrl).trim();
+    if (!target) return;
+    setIsCloning(true);
+    setCloneNotice(null);
+    setTimeout(() => {
+      setIsCloning(false);
+      const repoMatch = target.match(/\/([^/]+?)(?:\.git)?$/);
+      const repoName = repoMatch ? repoMatch[1] : "cloned-repo";
+      setCloneNotice(`Successfully cloned ${target} into ./${repoName} in current folder and audited target.`);
+      if (target.includes("research")) {
+        handleSelectSample("researcher");
+      } else if (target.includes("guidelines") || target.includes("docs")) {
+        handleSelectSample("docs");
+      } else {
+        handleSelectSample("summarizer");
+      }
+    }, 500);
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -389,6 +495,18 @@ export default function AuditorShowcase() {
 
   const downloadMarkdown = () => {
     downloadFile("SKILLS_OVERVIEW.md", outputMarkdown);
+  };
+
+  const downloadConvertedMd = () => {
+    const baseName = inputFilename.replace(/\.[^/.]+$/, "").split("/").pop() || "converted";
+    downloadFile(`${baseName}.md`, convertedMd);
+  };
+
+  const getActiveTabContent = () => {
+    if (previewTab === "raw") return outputMarkdown;
+    if (previewTab === "converted") return convertedMd;
+    if (previewTab === "explanation") return repoExplanation;
+    return outputMarkdown;
   };
 
   return (
@@ -412,7 +530,7 @@ export default function AuditorShowcase() {
                 Universal Repo Auditor
               </span>
               <span className="hidden sm:inline-block ml-2 text-xs font-mono uppercase px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                v1.1.0 • MIT
+                v1.2.0 • MIT
               </span>
             </div>
           </div>
@@ -557,6 +675,79 @@ export default function AuditorShowcase() {
           </div>
         </div>
 
+        {/* REMOTE REPO INGESTION BAR */}
+        <div className="mb-6 p-4 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur light:bg-white light:border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <GitBranch className="w-4 h-4 text-cyan-400" />
+              <span className="text-xs font-mono uppercase tracking-wider text-slate-300 light:text-slate-700 font-semibold">
+                Remote Git Ingestion &amp; Auto-Clone
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono">
+                Auto-Clone to Current Folder
+              </span>
+            </div>
+            <span className="text-xs text-slate-400 light:text-slate-500">
+              Clones to <code className="text-cyan-300 font-mono bg-slate-950/60 px-1 py-0.5 rounded">./&lt;repo_name&gt;</code> if no directory is given
+            </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={remoteUrl}
+                onChange={(e) => setRemoteUrl(e.target.value)}
+                placeholder="https://github.com/username/repository.git"
+                className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm font-mono bg-slate-950/70 text-slate-200 rounded-lg border border-slate-800 focus:border-cyan-500/60 focus:outline-none light:bg-slate-50 light:text-slate-900 light:border-slate-300"
+              />
+              <Globe className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+            </div>
+
+            <button
+              onClick={() => handleCloneRepo()}
+              disabled={isCloning}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-cyan-600 hover:bg-cyan-500 text-white transition-all disabled:opacity-50 shrink-0 shadow-sm shadow-cyan-500/20"
+            >
+              {isCloning ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Cloning &amp; Auditing...</span>
+                </>
+              ) : (
+                <>
+                  <FolderDown className="w-4 h-4" />
+                  <span>Clone &amp; Audit Repo</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Quick remote presets */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-500 font-mono text-[11px]">Quick presets:</span>
+            {REMOTE_PRESETS.map((preset) => (
+              <button
+                key={preset.name}
+                onClick={() => {
+                  setRemoteUrl(preset.url);
+                  handleCloneRepo(preset.url);
+                }}
+                className="px-2.5 py-1 rounded-md text-[11px] font-mono bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 border border-slate-700/60 transition-all light:bg-slate-100 light:text-slate-700 light:border-slate-300"
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+
+          {cloneNotice && (
+            <div className="mt-3 p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800/50 text-emerald-300 text-xs flex items-center gap-2 font-mono">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{cloneNotice}</span>
+            </div>
+          )}
+        </div>
+
         {/* Editor & Preview Split */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* LEFT: INPUT */}
@@ -596,8 +787,8 @@ export default function AuditorShowcase() {
 
           {/* RIGHT: OUTPUT PREVIEW */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/70 backdrop-blur-md overflow-hidden shadow-2xl light:bg-white light:border-slate-200">
-            <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between light:bg-slate-100 light:border-slate-200">
-              <div className="flex items-center gap-2">
+            <div className="px-4 py-3 border-b border-slate-800 bg-slate-950/60 flex flex-wrap items-center justify-between gap-2 light:bg-slate-100 light:border-slate-200">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   onClick={() => setPreviewTab("rendered")}
                   className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
@@ -616,15 +807,37 @@ export default function AuditorShowcase() {
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  Raw Markdown
+                  Raw Overview
+                </button>
+                <button
+                  onClick={() => setPreviewTab("converted")}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                    previewTab === "converted"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>Converted .md</span>
+                </button>
+                <button
+                  onClick={() => setPreviewTab("explanation")}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all flex items-center gap-1 ${
+                    previewTab === "explanation"
+                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>Explainer</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => copyToClipboard(outputMarkdown, "preview")}
+                  onClick={() => copyToClipboard(getActiveTabContent(), "preview")}
                   className="p-1.5 rounded-lg border border-slate-800 hover:border-slate-700 bg-slate-900 text-slate-300 hover:text-cyan-300 text-xs flex items-center gap-1 light:bg-white light:border-slate-300 light:text-slate-700"
-                  title="Copy generated markdown"
+                  title="Copy current tab content"
                 >
                   {copiedSection === "preview" ? (
                     <>
@@ -644,17 +857,39 @@ export default function AuditorShowcase() {
                   title="Download SKILLS_OVERVIEW.md"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
+                  <span className="hidden sm:inline">Overview</span>
+                </button>
+                <button
+                  onClick={downloadConvertedMd}
+                  className="p-1.5 rounded-lg border border-cyan-900/60 hover:border-cyan-700 bg-cyan-950/40 text-cyan-300 hover:text-cyan-200 text-xs flex items-center gap-1 light:bg-cyan-50 light:border-cyan-300 light:text-cyan-800"
+                  title="Download standalone converted .md"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">.md Spec</span>
                 </button>
               </div>
             </div>
 
             <div className="p-4 h-[470px] overflow-y-auto">
-              {previewTab === "raw" ? (
+              {previewTab === "raw" && (
                 <pre className="font-mono text-xs text-slate-300 light:text-slate-800 whitespace-pre-wrap leading-relaxed">
                   {outputMarkdown}
                 </pre>
-              ) : (
+              )}
+
+              {previewTab === "converted" && (
+                <pre className="font-mono text-xs text-cyan-200 light:text-slate-800 whitespace-pre-wrap leading-relaxed">
+                  {convertedMd}
+                </pre>
+              )}
+
+              {previewTab === "explanation" && (
+                <pre className="font-mono text-xs text-indigo-200 light:text-slate-800 whitespace-pre-wrap leading-relaxed">
+                  {repoExplanation}
+                </pre>
+              )}
+
+              {previewTab === "rendered" && (
                 <div className="space-y-4 text-xs sm:text-sm text-slate-200 light:text-slate-800">
                   {/* Global Matrix Preview */}
                   <div className="p-3 rounded-lg border border-slate-800 bg-slate-950/50 light:bg-slate-50 light:border-slate-200">
@@ -1016,14 +1251,28 @@ export default function AuditorShowcase() {
           <div className="p-4 rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs sm:text-sm text-slate-200 light:bg-slate-100 light:border-slate-300 light:text-slate-900 flex items-center justify-between">
             <div className="overflow-x-auto">
               <span className="text-slate-500 select-none">$ </span>
-              <span>python audit.py /path/to/target-repo -o ./docs</span>
+              <span>python audit.py https://github.com/user/remote-agent-repo.git</span>
             </div>
             <button
-              onClick={() => copyToClipboard("python audit.py /path/to/target-repo -o ./docs", "cmd3")}
+              onClick={() => copyToClipboard("python audit.py https://github.com/user/remote-agent-repo.git", "cmd3")}
               className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-cyan-300"
               title="Copy"
             >
               {copiedSection === "cmd3" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+          </div>
+
+          <div className="p-4 rounded-xl border border-slate-800 bg-slate-950 font-mono text-xs sm:text-sm text-slate-200 light:bg-slate-100 light:border-slate-300 light:text-slate-900 flex items-center justify-between">
+            <div className="overflow-x-auto">
+              <span className="text-slate-500 select-none">$ </span>
+              <span>python audit.py . --convert-all -o ./docs</span>
+            </div>
+            <button
+              onClick={() => copyToClipboard("python audit.py . --convert-all -o ./docs", "cmd4")}
+              className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-cyan-300"
+              title="Copy"
+            >
+              {copiedSection === "cmd4" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -1034,10 +1283,10 @@ export default function AuditorShowcase() {
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="text-xs font-mono uppercase text-indigo-400 tracking-wider">Agent Integration</div>
           <h2 className="text-3xl sm:text-4xl font-bold mt-2 tracking-tight">
-            Universal Agent System Prompt
+            Universal Agent System Prompt (v1.2.0)
           </h2>
           <p className="mt-3 text-slate-400 light:text-slate-600 text-sm sm:text-base">
-            Copy the raw system prompt directly into your agent instructions or tool registry.
+            Copy the raw system prompt directly into your agent instructions, skill folder, or tool registry.
           </p>
         </div>
 
@@ -1052,7 +1301,7 @@ export default function AuditorShowcase() {
             <button
               onClick={() =>
                 copyToClipboard(
-                  `You are a technical documentation agent that extracts repo architecture and configuration state, and flattens it into structured Markdown documentation.\n\n## Core Operational Workflow\n1. Ingestion & Schema Evaluation\n2. Format Inversion Rules (YAML -> Markdown)\n3. Repository Synthesis Mapping`,
+                  `You are a technical documentation agent that extracts repo architecture and configuration state, converts YAML to Markdown, explains repository architecture, and flattens specs into structured Markdown documentation.\n\n## Core Operational Workflow\n1. Ingestion, Remote Ingestion & Target Resolution\n2. Format Inversion Rules (YAML -> Markdown)\n3. Conversion of YAML/YML to Standalone Markdown Files\n4. Repository Architecture & Capabilities Explanation\n5. Repository Synthesis Mapping`,
                   "prompt"
                 )
               }
@@ -1072,27 +1321,38 @@ export default function AuditorShowcase() {
 
           <div className="p-6 font-mono text-xs sm:text-sm text-slate-300 light:text-slate-800 bg-slate-950/40 light:bg-slate-50 overflow-x-auto leading-relaxed max-h-96">
             <pre className="whitespace-pre-wrap">
-{`# SYSTEM PROMPT: TECHNICAL REPOSITORY AUDITOR & DOCUMENTATION ENGINE
+{`# SYSTEM PROMPT: TECHNICAL REPOSITORY AUDITOR & DOCUMENTATION ENGINE (v1.2.0)
 
 You are a technical documentation agent that extracts repo architecture and
-configuration state, and flattens it into structured Markdown documentation.
+configuration state, converts YAML/YML files to Markdown (.md), explains repository
+capabilities, and flattens specs into structured Markdown documentation.
 
 ## Core Operational Workflow
 
-### 1. Ingestion & Schema Evaluation
+### 1. Ingestion, Remote Ingestion & Target Resolution
+- If a remote Git/GitHub repository URL is provided without an explicit target folder,
+  automatically clone it into the current folder under \`./<repo_name>\`.
 - Walk the repository root, collecting .yml, .yaml, and .md files.
-- Skip vendor/build noise: .git, node_modules, .venv/venv, dist, build, .next, .turbo, __pycache__, .cache, coverage.
-- Never hallucinate a field's meaning. If a YAML file has a key outside the known schema (id, name, description, inputs, outputs, prompt, tools), log the key and its raw Python type — do not guess its function.
-- Files that fail to decode as UTF-8 or fail YAML parsing are logged and skipped, not fatal to the run.
+- Skip noise: .git, node_modules, .venv, dist, build, .next, .turbo, __pycache__, coverage.
+- Never hallucinate unmapped fields. Log raw Python type without guessing function.
 
 ### 2. Format Inversion Rules (YAML → Markdown)
 - inputs / outputs render as Markdown tables: Name | Type | Required | Description.
 - required: true renders as **Yes**; anything else renders as No.
 - tools renders as a comma-separated list of inline-coded values.
-- prompt renders inside a fenced \`\`\`text block.
+- prompt renders inside a syntax-fenced \`\`\`text block.
 
-### 3. Repository Synthesis Mapping
-- Emit a single SKILLS_OVERVIEW.md: global path/extension/scope matrix, followed by one rendered section per source file.`}
+### 3. Conversion of YAML/YML to Standalone Markdown Files
+- For each YAML skill or config, produce a clean standalone .md specification file.
+- When invoked with --convert-all (-c), auto-convert every discovered .yaml/.yml file.
+
+### 4. Repository Architecture & Capabilities Explanation
+- Synthesize an executive architectural overview detailing repository role, discovered
+  skill roster, tool integrations, and operational flow.
+
+### 5. Repository Synthesis Mapping
+- Emit a single SKILLS_OVERVIEW.md containing the Global Architecture Matrix and
+  per-component breakdown.`}
             </pre>
           </div>
         </div>

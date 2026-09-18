@@ -13,12 +13,17 @@ from audit import (
     EXCLUDED_DIRS,
     OUTPUT_FILENAME,
     build_matrix,
+    convert_yaml_files_to_md,
+    convert_yaml_to_md,
     extract_and_run,
+    generate_repo_explanation,
+    is_remote_repo_url,
     iter_target_files,
     read_text_safely,
     render_io_table,
     render_md_doc,
     render_yaml_doc,
+    resolve_target_dir,
 )
 
 
@@ -177,12 +182,77 @@ Description of the agent.
 
             content = out_path.read_text(encoding="utf-8")
             self.assertIn("# SKILLS_OVERVIEW", content)
+            self.assertIn("Repository Overview & Architecture Explanation", content)
             self.assertIn("Global Architecture Matrix", content)
             self.assertIn("`test_skill.yaml`", content)
             self.assertIn("`test_doc.md`", content)
             self.assertIn("Malformed configuration — skipped", content)
             self.assertIn("Non-mapping YAML root — skipped", content)
             self.assertIn("- **Id**: test-skill", content)
+
+    def test_is_remote_repo_url(self):
+        self.assertTrue(is_remote_repo_url("https://github.com/Anish29801/skill-auditor-agent"))
+        self.assertTrue(is_remote_repo_url("https://github.com/owner/repo.git"))
+        self.assertTrue(is_remote_repo_url("git@github.com:owner/repo.git"))
+        self.assertTrue(is_remote_repo_url("github.com/owner/repo"))
+        self.assertFalse(is_remote_repo_url("./local/folder"))
+        self.assertFalse(is_remote_repo_url("skills/summarizer.yaml"))
+        self.assertFalse(is_remote_repo_url("."))
+
+    def test_resolve_target_dir_local(self):
+        self.assertEqual(resolve_target_dir("."), Path.cwd())
+        self.assertEqual(resolve_target_dir(""), Path.cwd())
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.assertEqual(resolve_target_dir(tmpdir), Path(tmpdir).resolve())
+
+    def test_generate_repo_explanation(self):
+        entries = [("skills/my-skill.yaml", ".yaml", "Structured configuration schema")]
+        yaml_docs = [("skills/my-skill.yaml", {"id": "my-skill", "name": "My Skill", "tools": ["bash", "fetch"]})]
+        md_docs = [("README.md", "# Readme")]
+        lines = generate_repo_explanation(Path("/test/repo"), entries, yaml_docs, md_docs)
+        text = "\n".join(lines)
+        self.assertIn("## Repository Overview & Architecture Explanation", text)
+        self.assertIn("My Skill", text)
+        self.assertIn("`bash`", text)
+        self.assertIn("`fetch`", text)
+        self.assertIn("Operational Execution Flow", text)
+
+    def test_convert_yaml_to_md(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmproot = Path(tmpdir)
+            yaml_file = tmproot / "summarizer.yaml"
+            yaml_file.write_text(
+                "id: text-summarizer\nname: Summarizer\ndescription: Sum\ninputs:\n  - name: doc\n    type: str\n    required: true\n",
+                encoding="utf-8",
+            )
+            out_md = convert_yaml_to_md(yaml_file)
+            self.assertTrue(out_md.exists())
+            self.assertEqual(out_md.name, "summarizer.md")
+            content = out_md.read_text(encoding="utf-8")
+            self.assertIn("# Summarizer", content)
+            self.assertIn("Converted from", content)
+            self.assertIn("`doc`", content)
+            self.assertIn("**Yes**", content)
+
+    def test_convert_yaml_files_to_md_and_extract_convert_all(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmproot = Path(tmpdir)
+            skill1 = tmproot / "skill1.yaml"
+            skill1.write_text("id: s1\nname: Skill 1\n", encoding="utf-8")
+            skill2 = tmproot / "skill2.yml"
+            skill2.write_text("id: s2\nname: Skill 2\n", encoding="utf-8")
+
+            # Bulk convert
+            converted = convert_yaml_files_to_md(tmproot, output_dir=tmproot / "converted")
+            self.assertEqual(len(converted), 2)
+            self.assertTrue((tmproot / "converted" / "skill1.md").exists())
+            self.assertTrue((tmproot / "converted" / "skill2.md").exists())
+
+            # Test extract_and_run with convert_all=True
+            out_file = extract_and_run(tmproot, convert_all=True)
+            self.assertTrue(out_file.exists())
+            self.assertTrue((tmproot / "converted_md" / "skill1.md").exists())
+            self.assertTrue((tmproot / "converted_md" / "skill2.md").exists())
 
 
 if __name__ == "__main__":

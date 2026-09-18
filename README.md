@@ -51,11 +51,17 @@ python audit.py
 # Audit a specific target repository / directory
 python audit.py /path/to/target-repo
 
-# Output SKILLS_OVERVIEW.md to a custom destination directory
-python audit.py /path/to/target-repo -o ./docs
+# Download / clone a remote GitHub repository into the current folder and audit it
+python audit.py https://github.com/Anish29801/skill-auditor-agent
+
+# Convert all YAML/YML files into standalone Markdown documents (.md)
+python audit.py /path/to/target-repo --convert-all
+
+# Output SKILLS_OVERVIEW.md and converted files to a custom destination directory
+python audit.py /path/to/target-repo -o ./docs -c
 
 # If installed via pip install . :
-skill-auditor /path/to/target-repo
+skill-auditor https://github.com/owner/repo -c
 ```
 
 ### 2. Autonomous Agent Skill (Claude Code, Antigravity, OpenCode)
@@ -63,6 +69,9 @@ The repository includes `universal-repo-auditor.md`, an agent skill definition w
 
 Load `universal-repo-auditor.md` into your agent runtime (Claude Code, Antigravity, OpenCode, etc.):
 - The agent reasons over repository files, parses unstructured notes, and produces the same structured documentation shape.
+- **Remote Ingestion**: When given a Git/GitHub URL, the agent downloads/clones the repository directly into the current workspace.
+- **Repository Explanation**: Synthesizes an executive overview of the project's purpose, capabilities, integrations, and operational flow.
+- **YAML to Markdown**: Automatically converts YAML/YML configurations into publication-grade Markdown files.
 - Use **agent mode** when you want an LLM to interpret and summarize unmapped schemas or complex guidelines.
 - Use **script mode** (`audit.py`) when you want instant, reproducible, zero-inference audits.
 
@@ -70,17 +79,23 @@ Load `universal-repo-auditor.md` into your agent runtime (Claude Code, Antigravi
 
 ## Features & Behavior
 
-1. **Intelligent Directory Scanning**:
-   Recursively discovers `.yml`, `.yaml`, and `.md` files while automatically ignoring noisy build and cache folders (`.git`, `node_modules`, `.venv`, `venv`, `dist`, `build`, `.next`, `.turbo`, `__pycache__`, `.cache`, `coverage`).
-2. **Schema Evaluation & Safety**:
+1. **Remote Repository Ingestion & Cloning**:
+   Pass a remote Git repository URL (e.g. `https://github.com/...`) and the engine automatically downloads/clones the repo into the current working directory if no folder is specified.
+2. **Repository Architecture Explanation**:
+   Synthesizes an executive overview containing the repository's mission, discovered agent skill inventory, integrated tools, and operational execution flow.
+3. **YAML to Markdown Conversion (`-c` / `--convert-all`)**:
+   Recursively converts each `.yaml` and `.yml` configuration into its own structured, standalone `.md` specification file.
+4. **Intelligent Directory Scanning**:
+   Recursively discovers `.yml`, `.yaml`, and `.md` files while automatically ignoring noisy build and cache folders (`.git`, `node_modules`, `.venv`, `venv`, `dist`, `build`, `.next`, `.turbo`, `__pycache__`, `.cache`, `coverage`, `out`, `.netlify`, `.pytest_cache`, `converted_md`).
+5. **Schema Evaluation & Safety**:
    - Parses standard fields: `id`, `name`, `description`, `inputs`, `outputs`, `tools`, `prompt`.
    - Renders `inputs` / `outputs` into clean Markdown tables (`Name | Type | Required | Description`).
    - Fences large prompt strings in ` ```text ` blocks.
    - Non-fatal error handling: malformed YAML or non-UTF8 files are safely warned and skipped.
    - **Log, Don't Guess**: Any unexpected or unmapped top-level keys are logged with their raw Python types rather than guessed.
-3. **Markdown Ingestion**:
-   Indexes Markdown documentation files and previews their header/primary line.
-4. **Unified Matrix**:
+6. **Markdown Ingestion & Frontmatter Stripping**:
+   Indexes Markdown documentation files and previews their real headers while gracefully skipping YAML frontmatter blocks (`--- ... ---`).
+7. **Unified Architecture Matrix**:
    Emits a top-level architecture matrix followed by in-depth per-file breakdowns.
 
 ---
