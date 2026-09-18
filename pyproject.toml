@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skill-auditor-agent"
+version = "1.1.0"
+description = "Universal Repo Auditor & Documentation Engine for agent skills, YAML configurations, and Markdown documentation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Anish", email = "edu.anish29801@gmail.com" }
+]
+keywords = ["agent", "skills", "audit", "documentation", "markdown", "yaml", "cli"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Documentation",
+]
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Anish29801/skill-auditor-agent"
+Repository = "https://github.com/Anish29801/skill-auditor-agent"
+Issues = "https://github.com/Anish29801/skill-auditor-agent/issues"
+
+[project.scripts]
+skill-auditor = "audit:main"
+repo-auditor = "audit:main"

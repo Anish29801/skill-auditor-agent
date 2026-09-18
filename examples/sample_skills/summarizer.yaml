@@ -1,0 +1,21 @@
+id: text-summarizer
+name: Text Summarizer
+description: Condenses long documents and articles into key bullet points.
+inputs:
+  - name: document
+    type: string
+    required: true
+    description: Input text or document to summarize.
+  - name: max_points
+    type: integer
+    required: false
+    description: Maximum bullet points to generate.
+outputs:
+  - name: summary
+    type: string
+    required: true
+    description: Markdown-formatted summary bullets.
+tools:
+  - text_processor
+prompt: |
+  You are an expert technical editor. Summarize the provided document into clear, concise, actionable bullet points.
