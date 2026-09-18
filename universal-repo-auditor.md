@@ -112,6 +112,7 @@ def resolve_target_dir(target_arg: str | Path | None, destination: Path | None =
             log.info("Target directory %s already exists. Reusing existing folder.", dest_dir)
             return dest_dir
 
+        dest_dir.parent.mkdir(parents=True, exist_ok=True)
         log.info("Downloading/cloning repository from %s into %s ...", clone_url, dest_dir)
         try:
             subprocess.run(["git", "clone", "--depth", "1", clone_url, str(dest_dir)], check=True)
@@ -344,9 +345,11 @@ def convert_yaml_files_to_md(root: Path, output_dir: Path | None = None) -> list
 def extract_and_run(
     root_dir: str | Path = ".",
     output_dir: str | Path | None = None,
+    destination: str | Path | None = None,
     convert_all: bool = False,
 ) -> Path:
-    root = resolve_target_dir(root_dir)
+    dest_path = Path(destination).resolve() if destination else None
+    root = resolve_target_dir(root_dir, destination=dest_path)
     out_path = (Path(output_dir).resolve() if output_dir else root) / OUTPUT_FILENAME
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -398,10 +401,11 @@ def main() -> None:
         description="Audit a repo, convert YAML to Markdown, explain architecture, and generate SKILLS_OVERVIEW.md"
     )
     parser.add_argument("root", nargs="?", default=".", help="Repository root or remote Git/GitHub URL to scan")
+    parser.add_argument("destination", nargs="?", default=None, help="Destination directory if cloning a remote repository")
     parser.add_argument("-o", "--output-dir", default=None, help="Directory for SKILLS_OVERVIEW.md (default: root)")
     parser.add_argument("-c", "--convert-all", action="store_true", help="Convert all YAML/YML files to individual .md files")
     args = parser.parse_args()
-    extract_and_run(args.root, args.output_dir, convert_all=args.convert_all)
+    extract_and_run(args.root, output_dir=args.output_dir, destination=args.destination, convert_all=args.convert_all)
 
 
 if __name__ == "__main__":

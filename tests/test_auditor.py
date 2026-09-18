@@ -204,6 +204,13 @@ Description of the agent.
         self.assertEqual(resolve_target_dir(""), Path.cwd())
         with tempfile.TemporaryDirectory() as tmpdir:
             self.assertEqual(resolve_target_dir(tmpdir), Path(tmpdir).resolve())
+            custom_dest = Path(tmpdir) / "custom_dest"
+            custom_dest.mkdir()
+            (custom_dest / "sample.txt").write_text("hello", encoding="utf-8")
+            self.assertEqual(
+                resolve_target_dir("https://github.com/owner/repo.git", destination=custom_dest),
+                custom_dest,
+            )
 
     def test_generate_repo_explanation(self):
         entries = [("skills/my-skill.yaml", ".yaml", "Structured configuration schema")]
